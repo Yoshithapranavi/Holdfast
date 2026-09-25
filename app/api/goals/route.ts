@@ -1,4 +1,4 @@
-﻿import { headers } from "next/headers";
+import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { auth } from "@/lib/auth";
@@ -30,5 +30,18 @@ export async function POST(request: Request) {
     targetSessions,
   }).returning();
 
-  return NextResponse.json(goal, { status: 201 });
+  return NextResponse.json({
+    id: goal.id,
+    title: goal.title,
+    metric: "FREQUENCY",
+    currentValue: goal.completedSessions,
+    targetValue: goal.targetSessions,
+    unit: "sessions",
+    deadline: null,
+    visibility: "PRIVATE",
+    status: "ACTIVE",
+    createdAt: goal.createdAt.toISOString(),
+    updatedAt: goal.updatedAt.toISOString(),
+    milestones: [],
+  }, { status: 201 });
 }

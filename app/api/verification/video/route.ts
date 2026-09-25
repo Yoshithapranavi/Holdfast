@@ -43,7 +43,7 @@ export async function POST(request: Request) {
                 file,
                 { access: "public", addRandomSuffix: false }
             );
-            pathname = blob.pathname;
+            pathname = blob.url ?? blob.pathname;
         } catch {
             // Fall back to local if blob fails
             pathname = "";

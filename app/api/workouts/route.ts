@@ -1,10 +1,11 @@
-﻿import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { workoutSessions } from "@/lib/db/schema";
+import { incrementGoalProgress } from "@/lib/staking";
 
 export async function GET() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -37,15 +38,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: { message: "Workout type and a valid duration are required." } }, { status: 400 });
   }
 
+  const isUuid = (val: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+  const targetGoalId =
+    typeof body?.goalId === "string" && isUuid(body.goalId) ? body.goalId : null;
+
   const [workout] = await db.insert(workoutSessions).values({
     userId: session.user.id,
-    goalId: typeof body?.goalId === "string" && body.goalId ? body.goalId : null,
+    goalId: targetGoalId,
     type,
     durationMinutes,
     distanceKm: body?.distanceKm == null || body.distanceKm === "" ? null : Number(body.distanceKm),
     effort: typeof body?.effort === "string" ? body.effort : null,
     notes: typeof body?.notes === "string" ? body.notes.trim() : null,
   }).returning();
+
+  await incrementGoalProgress(session.user.id, targetGoalId);
 
   return NextResponse.json(workout, { status: 201 });
 }

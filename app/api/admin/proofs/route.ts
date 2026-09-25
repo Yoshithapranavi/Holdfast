@@ -17,7 +17,10 @@ async function requireAdmin() {
         .map((email) => email.trim().toLowerCase())
         .filter(Boolean);
 
-    if (adminEmails.length === 0 || adminEmails.includes(session.user.email.toLowerCase())) {
+    if (
+        adminEmails.length === 0 ||
+        adminEmails.includes(session.user.email.toLowerCase())
+    ) {
         return session;
     }
 
@@ -33,7 +36,7 @@ export async function GET() {
     const proofs = await db
         .select()
         .from(verificationProofs)
-        .where(ne(verificationProofs.status, "APPROVED"))
+        .where(eq(verificationProofs.status, "SUBMITTED"))
         .orderBy(desc(verificationProofs.createdAt));
 
     const snapshot = await getStakingSnapshot(session.user.id);
@@ -73,4 +76,4 @@ export async function PATCH(request: Request) {
     await applyProofReview(proof.userId, status);
 
     return NextResponse.json(proof);
-}
+}

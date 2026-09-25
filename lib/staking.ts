@@ -178,9 +178,10 @@ export async function getStakingSnapshot(userId: string) {
   const myStake = mine[0] ?? null;
   const myShareCents =
     myStake?.status === "COMPLETED" ? shareCents + myStake.amountCents : 0;
+  const totalStakedCents = rows.reduce((sum, row) => sum + row.amountCents, 0);
 
   return {
-    poolCents: forfeitedCents,
+    poolCents: totalStakedCents,
     forfeitedCents,
     completedCount: completed.length,
     verifiedCount: verified.length,

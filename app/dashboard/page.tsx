@@ -429,6 +429,37 @@ export default function DashboardPage() {
     useEffect(() => {
         if (user) {
             loadDashboard();
+
+            if (typeof window !== "undefined") {
+                const params = new URLSearchParams(window.location.search);
+                const stakingParam = params.get("staking");
+                const sessionId = params.get("session_id");
+
+                if (stakingParam === "success" && sessionId) {
+                    fetch("/api/staking/confirm", {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ sessionId }),
+                    })
+                        .then((res) => res.json())
+                        .then((data) => {
+                            if (data?.error?.message) {
+                                setMessage(data.error.message);
+                            } else {
+                                setMessage("Stripe payment confirmed! Your financial stake is active.");
+                                window.history.replaceState({}, "", "/dashboard");
+                                loadDashboard();
+                            }
+                        })
+                        .catch(() => {
+                            setMessage("Unable to confirm Stripe stake payment.");
+                        });
+                } else if (stakingParam === "cancelled") {
+                    setMessage("Staking checkout was cancelled.");
+                    window.history.replaceState({}, "", "/dashboard");
+                }
+            }
         }
     }, [user]);
 
@@ -1032,7 +1063,8 @@ export default function DashboardPage() {
                                 className="btn btn-lg day-b2"
                                 onClick={async () => {
                                     try {
-                                        await saveDailyCommitment("MOVED");
+                                        const updated = await saveDailyCommitment("MOVED");
+                                        setDailyCommitment(updated);
                                         setMessage("Commitment moved to tomorrow.");
                                     } catch (error) {
                                         setMessage(
@@ -1051,7 +1083,8 @@ export default function DashboardPage() {
                                 className="btn btn-lg day-b3"
                                 onClick={async () => {
                                     try {
-                                        await saveDailyCommitment("INJURED");
+                                        const updated = await saveDailyCommitment("INJURED");
+                                        setDailyCommitment(updated);
                                         setMessage("Take care. Your commitment is paused for today.");
                                     } catch (error) {
                                         setMessage(
