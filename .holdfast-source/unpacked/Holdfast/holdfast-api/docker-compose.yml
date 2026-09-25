@@ -1,0 +1,25 @@
+# Optional: brings up just PostgreSQL for local development.
+# The API itself runs with `npm run dev` on your machine, not in this file.
+#
+# Usage:
+#   docker compose up -d
+#   cp .env.example .env
+#   npm install
+#   npm run prisma:migrate
+#   npm run seed
+#   npm run dev
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: holdfast
+      POSTGRES_PASSWORD: holdfast
+      POSTGRES_DB: holdfast
+    ports:
+      - "5433:5432"
+    volumes:
+      - holdfast_pgdata:/var/lib/postgresql/data
+
+volumes:
+  holdfast_pgdata:

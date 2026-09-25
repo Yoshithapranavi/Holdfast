@@ -1,0 +1,484 @@
+// Holdfast data model.
+//
+// Organized to mirror the product's screens:
+//   User / Partnership          -> onboarding, profile, "who witnesses you"
+//   Goal / Milestone            -> Goals screen
+//   Challenge / ChallengeMember -> Challenge discovery + detail + standings
+//   WorkoutSession / Proof      -> workout logging + proof submission
+//   Witness                     -> "confirm you've seen this" on proof
+//   Post / Comment / Reaction   -> community feed
+//   PrivacySetting / NotificationSetting -> settings screen
+//   StakeAccount / Stake / LedgerEntry   -> conceptual, demo-only staking area
+//
+// The staking models are deliberately isolated and namespaced "Stake*" /
+// "demo" so that removing the feature entirely — if the real-money rules
+// never ship — means dropping a handful of clearly-marked tables, not
+// untangling it from the rest of the schema.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Visibility {
+  PUBLIC
+  PARTNERS
+  PRIVATE
+}
+
+enum GoalMetric {
+  DISTANCE
+  DURATION
+  FREQUENCY
+  HABIT
+  CUSTOM
+}
+
+enum GoalStatus {
+  ACTIVE
+  FINISHED
+  ARCHIVED
+}
+
+enum SessionType {
+  RUN
+  STRENGTH
+  SWIM
+  CYCLE
+  MOBILITY
+  OTHER
+}
+
+enum Effort {
+  EASY
+  STEADY
+  HARD
+}
+
+enum ProofKind {
+  PHOTO
+  VIDEO
+  CHECK_IN
+}
+
+enum WitnessStatus {
+  PENDING
+  CONFIRMED
+  QUERIED
+}
+
+enum PartnershipStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  ENDED
+}
+
+enum ChallengeProofRequirement {
+  NONE
+  CHECK_IN
+  PHOTO_OR_VIDEO
+  GPS_SCREENSHOT
+}
+
+enum ChallengeMemberStatus {
+  ACTIVE
+  OBSERVER // dropped after silent misses, per the challenge's own rule
+  WITHDRAWN
+  FINISHED
+}
+
+enum PostType {
+  SESSION
+  MILESTONE
+  MISSED_DAY
+  TEXT
+}
+
+enum ReactionType {
+  ENCOURAGE // the feed's one reaction: showing up, not a generic "like"
+}
+
+enum StakeStatus {
+  ACTIVE
+  WON
+  LOST
+  RELEASED // a partner released it early (injury, illness — no proof required)
+  WITHDRAWN
+}
+
+enum LedgerReason {
+  SIGNUP_GRANT
+  STAKE_HELD
+  STAKE_RETURNED
+  STAKE_FORFEITED
+  POT_SHARE
+  MANUAL_ADJUSTMENT
+}
+
+// ---------------------------------------------------------------------------
+// Identity, partners, witnesses
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  handle       String   @unique
+  bio          String?
+  city         String?
+  avatarColor  String   @default("#42505C") // swatch id used by the front end's avatar chips
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  goals              Goal[]
+  sessions           WorkoutSession[]
+  hostedChallenges   Challenge[]           @relation("ChallengeHost")
+  challengeMembers   ChallengeMember[]
+  posts              Post[]
+  comments           Comment[]
+  reactions          Reaction[]
+  witnessAssignments Witness[]             @relation("WitnessUser")
+  privacySettings    PrivacySetting[]
+  notificationPrefs  NotificationSetting[]
+
+  partnershipsFrom Partnership[] @relation("PartnershipRequester")
+  partnershipsTo   Partnership[] @relation("PartnershipRecipient")
+
+  goalWitnesses GoalWitness[]
+
+  stakeAccount StakeAccount?
+  stakes       Stake[]
+  ledgerEntries LedgerEntry[]
+
+  @@index([handle])
+}
+
+// A partnership is the mutual accountability relationship ("partners" in the
+// UI). It starts PENDING when one person invites another (see onboarding and
+// the profile's "Ask to be partners") and becomes ACCEPTED once the other
+// side agrees. Partners are the audience for PARTNERS-visibility content.
+model Partnership {
+  id          String            @id @default(cuid())
+  requesterId String
+  recipientId String
+  status      PartnershipStatus @default(PENDING)
+  createdAt   DateTime          @default(now())
+  respondedAt DateTime?
+
+  requester User @relation("PartnershipRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  recipient User @relation("PartnershipRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, recipientId])
+  @@index([recipientId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Goals
+// ---------------------------------------------------------------------------
+
+model Goal {
+  id          String     @id @default(cuid())
+  userId      String
+  title       String
+  metric      GoalMetric
+  targetValue Float // interpreted using `unit` — km, minutes, sessions/week, etc.
+  unit        String
+  currentValue Float     @default(0)
+  deadline    DateTime?
+  visibility  Visibility @default(PARTNERS)
+  status      GoalStatus @default(ACTIVE)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  milestones Milestone[]
+  witnesses  GoalWitness[]
+  sessions   WorkoutSession[]
+  stakes     Stake[]
+
+  @@index([userId, status])
+}
+
+// Witnesses chosen for a specific goal (distinct from the general partner
+// graph — you can be someone's partner without witnessing every goal).
+model GoalWitness {
+  id      String @id @default(cuid())
+  goalId  String
+  userId  String
+  addedAt DateTime @default(now())
+
+  goal Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([goalId, userId])
+}
+
+model Milestone {
+  id         String    @id @default(cuid())
+  goalId     String
+  title      String
+  achievedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  goal Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@index([goalId])
+}
+
+// ---------------------------------------------------------------------------
+// Challenges
+// ---------------------------------------------------------------------------
+
+model Challenge {
+  id                String                    @id @default(cuid())
+  title             String
+  description       String
+  category          String
+  hostId            String
+  hostName          String // display name for the hosting club/person, kept even if hostId is a system account
+  durationWeeks     Int
+  startDate         DateTime
+  proofRequirement  ChallengeProofRequirement @default(NONE)
+  proofFrequencyPerWeek Int                   @default(0)
+  capacity          Int?
+  visibility        Visibility                @default(PUBLIC)
+  allowsDemoStaking Boolean                   @default(false)
+  createdAt         DateTime                  @default(now())
+
+  host    User              @relation("ChallengeHost", fields: [hostId], references: [id])
+  members ChallengeMember[]
+  weeks   ChallengeWeek[]
+  stakes  Stake[]
+
+  @@index([startDate])
+  @@index([category])
+}
+
+// Optional structured week-by-week plan, shown on the challenge detail screen.
+model ChallengeWeek {
+  id           String @id @default(cuid())
+  challengeId  String
+  weekNumber   Int
+  focus        String
+  targetValue  Float?
+  targetUnit   String?
+
+  challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+
+  @@unique([challengeId, weekNumber])
+}
+
+model ChallengeMember {
+  id            String                @id @default(cuid())
+  challengeId   String
+  userId        String
+  status        ChallengeMemberStatus @default(ACTIVE)
+  joinedAt      DateTime              @default(now())
+  silentMisses  Int                   @default(0)
+
+  challenge Challenge        @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions  WorkoutSession[]
+
+  @@unique([challengeId, userId])
+  @@index([challengeId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Workouts and proof
+// ---------------------------------------------------------------------------
+
+model WorkoutSession {
+  id                String      @id @default(cuid())
+  userId            String
+  type              SessionType
+  occurredAt        DateTime
+  durationSeconds   Int
+  distanceMeters    Float?
+  effort            Effort?
+  notes             String?
+  visibility        Visibility  @default(PARTNERS)
+  goalId            String?
+  challengeMemberId String?
+  createdAt         DateTime    @default(now())
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goal            Goal?            @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  challengeMember ChallengeMember? @relation(fields: [challengeMemberId], references: [id], onDelete: SetNull)
+  proofs          Proof[]
+  post            Post?
+
+  @@index([userId, occurredAt])
+}
+
+model Proof {
+  id               String        @id @default(cuid())
+  sessionId        String
+  kind             ProofKind
+  fileUrl          String?
+  checkInLabel     String? // coarse label only (e.g. "Lisbon") — never exact coordinates, per privacy rules
+  capturedAt       DateTime // used for the "taken on the day of the session" check
+  timestampVerified Boolean      @default(false)
+  createdAt        DateTime     @default(now())
+
+  session   WorkoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  witnesses Witness[]
+
+  @@index([sessionId])
+}
+
+// One row per person asked to confirm a piece of proof — this is the
+// "Sam's proof needs a witness" / "Confirm I've seen it" interaction.
+model Witness {
+  id          String        @id @default(cuid())
+  proofId     String
+  userId      String
+  status      WitnessStatus @default(PENDING)
+  note        String? // used for a "query it" response
+  respondedAt DateTime?
+  createdAt   DateTime      @default(now())
+
+  proof Proof @relation(fields: [proofId], references: [id], onDelete: Cascade)
+  user  User  @relation("WitnessUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([proofId, userId])
+  @@index([userId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Community feed
+// ---------------------------------------------------------------------------
+
+model Post {
+  id         String     @id @default(cuid())
+  userId     String
+  type       PostType
+  content    String?
+  sessionId  String?    @unique // set when type = SESSION, generated from the logged workout
+  visibility Visibility @default(PARTNERS)
+  createdAt  DateTime   @default(now())
+
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session   WorkoutSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  comments  Comment[]
+  reactions Reaction[]
+
+  @@index([createdAt])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+}
+
+model Reaction {
+  id        String       @id @default(cuid())
+  postId    String
+  userId    String
+  type      ReactionType @default(ENCOURAGE)
+  createdAt DateTime     @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+}
+
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+
+// One row per (userId, field) pair — mirrors the settings screen's visibility
+// table (sessions, proof media, missed days, notes, measurements, location).
+model PrivacySetting {
+  id           String     @id @default(cuid())
+  userId       String
+  field        String // e.g. "sessions", "proof_media", "missed_days", "notes", "measurements", "location"
+  visibleTo    Visibility @default(PARTNERS)
+  updatedAt    DateTime   @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, field])
+}
+
+model NotificationSetting {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String // e.g. "proof_requested", "session_witnessed", "streak_ending", "partner_missed_day", "new_challenges"
+  enabled   Boolean  @default(true)
+  channel   String   @default("push") // "push" | "email" | "digest"
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+}
+
+// ---------------------------------------------------------------------------
+// Conceptual staking (DEMO ONLY — simulated credits, never real currency)
+// ---------------------------------------------------------------------------
+
+// Every field and comment in this section exists to keep the demo boundary
+// obvious in the data, not just the UI: balances are "credits", nothing here
+// touches a payment processor, and LedgerReason has no "deposit" or
+// "withdrawal" variant tied to real money.
+model StakeAccount {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  balance     Int      @default(0) // simulated credits granted on signup, see seed.ts
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Stake {
+  id          String      @id @default(cuid())
+  userId      String
+  goalId      String?
+  challengeId String?
+  amount      Int
+  status      StakeStatus @default(ACTIVE)
+  ruleSummary String // plain-language rule shown on the card, e.g. "3 sessions by Sunday"
+  createdAt   DateTime    @default(now())
+  resolvedAt  DateTime?
+  resolvedBy  String? // userId of the partner who released it early, if applicable
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goal      Goal?      @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  challenge Challenge? @relation(fields: [challengeId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+}
+
+model LedgerEntry {
+  id        String       @id @default(cuid())
+  userId    String
+  amount    Int // positive or negative, in simulated credits
+  reason    LedgerReason
+  memo      String
+  stakeId   String?
+  createdAt DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
