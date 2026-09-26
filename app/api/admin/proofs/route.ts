@@ -17,10 +17,8 @@ async function requireAdmin() {
         .map((email) => email.trim().toLowerCase())
         .filter(Boolean);
 
-    if (
-        adminEmails.length === 0 ||
-        adminEmails.includes(session.user.email.toLowerCase())
-    ) {
+    // Grant admin only if ADMIN_EMAILS is defined and user email is listed
+    if (adminEmails.length > 0 && adminEmails.includes(session.user.email.toLowerCase())) {
         return session;
     }
 
