@@ -1,0 +1,1 @@
+ALTER TABLE "stakes" ADD COLUMN IF NOT EXISTS "goalId" uuid;

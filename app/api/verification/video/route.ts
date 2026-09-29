@@ -1,15 +1,19 @@
 import { put } from "@vercel/blob";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { verificationProofs } from "@/lib/db/schema";
+import { stakes, verificationProofs } from "@/lib/db/schema";
+import { findActiveStakeForProof, markStakeSubmitted } from "@/lib/staking";
 
 
 const MAX_VIDEO_SIZE = 100 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm"]);
+
+const isUuid = (val: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
 
 export async function POST(request: Request) {
     const session = await auth.api.getSession({ headers: await headers() });
@@ -20,6 +24,17 @@ export async function POST(request: Request) {
 
     const formData = await request.formData();
     const file = formData.get("video");
+    const stakeIdValue = formData.get("stakeId");
+    const goalIdValue = formData.get("goalId");
+
+    const stakeId =
+        typeof stakeIdValue === "string" && stakeIdValue ? stakeIdValue : undefined;
+    const goalId =
+        typeof goalIdValue === "string" && goalIdValue ? goalIdValue : undefined;
+
+    if ((stakeId && !isUuid(stakeId)) || (goalId && !isUuid(goalId))) {
+        return NextResponse.json({ error: "Invalid stake reference." }, { status: 400 });
+    }
 
     if (!(file instanceof File)) {
         return NextResponse.json({ error: "Video file is required." }, { status: 400 });
@@ -31,6 +46,38 @@ export async function POST(request: Request) {
 
     if (file.size > MAX_VIDEO_SIZE) {
         return NextResponse.json({ error: "Video must be 100 MB or smaller." }, { status: 400 });
+    }
+
+    // Resolve the exact ACTIVE video stake before inserting any proof
+    const targetStake = await findActiveStakeForProof(session.user.id, "video", {
+        stakeId,
+        goalId,
+    });
+
+    if (!targetStake) {
+        return NextResponse.json(
+            { error: "No active video stake found to submit proof for." },
+            { status: 400 }
+        );
+    }
+
+    const [pendingProof] = await db
+        .select()
+        .from(verificationProofs)
+        .where(
+            and(
+                eq(verificationProofs.userId, session.user.id),
+                eq(verificationProofs.stakeId, targetStake.id),
+                eq(verificationProofs.status, "SUBMITTED")
+            )
+        )
+        .limit(1);
+
+    if (pendingProof) {
+        return NextResponse.json(
+            { error: "A video proof is already submitted and awaiting admin review." },
+            { status: 409 }
+        );
     }
 
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
@@ -62,19 +109,53 @@ export async function POST(request: Request) {
         pathname = `/uploads/videos/${filename}`;
     }
 
-    const [proof] = await db
-        .insert(verificationProofs)
-        .values({
-            userId: session.user.id,
-            pathname,
-            proofMethod: "video",
-            status: "SUBMITTED",
-        })
-        .returning();
+    // Transition the exact ACTIVE stake before creating the proof so a
+    // submit race cannot leave a SUBMITTED proof attached to a stake
+    // that never left ACTIVE.
+    const submitted = await markStakeSubmitted(session.user.id, "video", {
+        stakeId: targetStake.id,
+    });
 
-    // Mark user's active stake as submitted
-    const { markStakeSubmitted } = await import("@/lib/staking");
-    await markStakeSubmitted(session.user.id);
+    if (!submitted) {
+        return NextResponse.json(
+            { error: "The stake is no longer active." },
+            { status: 409 }
+        );
+    }
+
+    let proof;
+    try {
+        [proof] = await db
+            .insert(verificationProofs)
+            .values({
+                userId: session.user.id,
+                stakeId: targetStake.id,
+                pathname,
+                proofMethod: "video",
+                status: "SUBMITTED",
+            })
+            .returning();
+    } catch {
+        proof = undefined;
+    }
+
+    if (!proof) {
+        // The proof was not created: safely restore that exact stake to
+        // ACTIVE only while it is still SUBMITTED.
+        await db
+            .update(stakes)
+            .set({ status: "ACTIVE", updatedAt: new Date() })
+            .where(
+                and(
+                    eq(stakes.id, targetStake.id),
+                    eq(stakes.status, "SUBMITTED")
+                )
+            );
+        return NextResponse.json(
+            { error: "Unable to submit video proof. Please try again." },
+            { status: 500 }
+        );
+    }
 
     return NextResponse.json({
         id: proof.id,

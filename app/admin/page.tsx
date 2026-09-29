@@ -96,7 +96,67 @@ export default function AdminPage() {
     }, []);
 
     return (
-        <main className="admin-page">
+        <>
+            {/* =========================
+            APP BAR — sticky top, DOM first (parity with dashboard)
+            ========================= */}
+            <div className="appbar">
+                <div className="mark">
+                    <svg
+                        className="knot"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        aria-hidden="true"
+                    >
+                        <path
+                            d="M4 6h6a5 5 0 0 1 0 10H8"
+                            stroke="#D2142F"
+                            strokeWidth="3"
+                        />
+
+                        <path
+                            d="M20 18h-6a5 5 0 0 1 0-10h2"
+                            stroke="#12161A"
+                            strokeWidth="3"
+                        />
+                    </svg>
+                    HOLDFAST
+                </div>
+
+                <nav className="appnav" aria-label="Holdfast">
+                    <Link href="/dashboard">Today</Link>
+                    <Link href="/dashboard">Goals</Link>
+                    <Link href="/dashboard">Challenges</Link>
+                    <Link href="/dashboard">Progress</Link>
+                    <Link href="/dashboard">Feed</Link>
+                    <Link href="/dashboard">Staking</Link>
+                    <Link href="/admin" className="admin-nav-link on" aria-current="page">
+                        Admin verification
+                    </Link>
+                </nav>
+
+                <div className="appbar-r">
+                    <div className="srch">
+                        <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            aria-hidden="true"
+                        >
+                            <circle cx="11" cy="11" r="7" />
+                            <path d="m20 20-3.5-3.5" />
+                        </svg>
+                        Search people,challenges
+                    </div>
+                    <Link href="/dashboard" className="btn btn-sm btn-ghost">
+                        ← Back to dashboard
+                    </Link>
+                </div>
+            </div>
+            <main className="admin-page">
             <header className="admin-header">
                 <div>
                     <span className="eyebrow">ADMINISTRATION & VERIFICATION QUEUE</span>
@@ -226,5 +286,6 @@ export default function AdminPage() {
                 ))}
             </section>
         </main>
+        </>
     );
 }

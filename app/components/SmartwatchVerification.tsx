@@ -4,11 +4,13 @@ import { useState } from "react";
 
 type SmartwatchVerificationProps = {
     disabled?: boolean;
+    stakeId?: string;
     onSubmitted: (message: string) => void;
 };
 
 export default function SmartwatchVerification({
     disabled = false,
+    stakeId,
     onSubmitted,
 }: SmartwatchVerificationProps) {
     const [selectedDevice, setSelectedDevice] = useState("Apple Watch Ultra");
@@ -17,9 +19,11 @@ export default function SmartwatchVerification({
     const [heartRate, setHeartRate] = useState(154);
     const [calories, setCalories] = useState(420);
     const [durationMins, setDurationMins] = useState(38);
+    const [error, setError] = useState("");
 
     async function syncDevice() {
         setSyncing(true);
+        setError("");
 
         try {
             const response = await fetch("/api/verification/watch", {
@@ -32,19 +36,20 @@ export default function SmartwatchVerification({
                     calories,
                     durationMinutes: durationMins,
                     capturedAt: new Date().toISOString(),
+                    ...(stakeId ? { stakeId } : {}),
                 }),
             });
 
             const data = await response.json().catch(() => null);
 
             if (!response.ok) {
-                onSubmitted(data?.error?.message || "Unable to submit smartwatch proof. Please try again.");
+                setError(data?.error?.message || data?.error || "Unable to submit smartwatch proof. Please try again.");
                 return;
             }
 
             onSubmitted(`Biometric data synced from ${selectedDevice}: ${heartRate} bpm avg, ${calories} kcal. Proof submitted for verification!`);
         } catch {
-            onSubmitted("Unable to submit smartwatch proof. Please try again.");
+            setError("Unable to submit smartwatch proof. Please try again.");
         } finally {
             setSyncing(false);
         }
@@ -159,6 +164,11 @@ export default function SmartwatchVerification({
                             {syncing ? "Transmitting Biometrics..." : "Submit Smartwatch Biometric Proof"}
                         </button>
                     </div>
+                    {error && (
+                        <p style={{ margin: "10px 0 0", color: "var(--crimson)", fontSize: "12px", fontWeight: 700 }} role="alert">
+                            {error}
+                        </p>
+                    )}
                 </div>
             )}
         </div>

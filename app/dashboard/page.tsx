@@ -273,6 +273,7 @@ export default function DashboardPage() {
         myStake: {
             id: string;
             amountCents: number;
+            goalId?: string | null;
             proofMethod: "watch" | "video";
             status: "ACTIVE" | "SUBMITTED" | "VERIFIED" | "COMPLETED" | "FORFEITED";
             createdAt: string;
@@ -346,15 +347,21 @@ export default function DashboardPage() {
             return;
         }
 
+        const targetGoalId = goals[0]?.id;
+        if (!targetGoalId) {
+            setMessage("Create an active goal before staking — your stake needs a goal to protect.");
+            return;
+        }
+
         setStakeLoading(true);
         setMessage("");
 
         try {
-            const response = await fetch("/api/staking", {
+            const response = await fetch("/api/staking/checkout", {
                 method: "POST",
                 credentials: "include",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ amount, proofMethod }),
+                body: JSON.stringify({ amount, proofMethod, goalId: targetGoalId }),
             });
             const data = await response.json().catch(() => null);
 
@@ -362,13 +369,10 @@ export default function DashboardPage() {
                 throw new Error(data?.error?.message || "Failed to create stake.");
             }
 
-            if (data?.snapshot) {
-                setStakingSnapshot(data.snapshot);
+            if (data?.url) {
+                window.location.href = data.url;
+                return;
             }
-
-            setStakeStatus("staked");
-            setMessage(`$${amount} financial stake activated! Submit your ${proofMethod === "watch" ? "biometric smartwatch" : "video check-in"} proof below to verify your commitment and earn redistribution rewards.`);
-            await loadDashboard();
         } catch (error) {
             setMessage(error instanceof Error ? error.message : "Unable to place stake.");
         } finally {
@@ -447,7 +451,8 @@ export default function DashboardPage() {
                             if (data?.error?.message) {
                                 setMessage(data.error.message);
                             } else {
-                                setMessage("Stripe payment confirmed! Your financial stake is active.");
+                                const amountCents = data.amountCents;
+                                setMessage(`Payment successful! Your $${(amountCents / 100).toFixed(2)} stake is now active.`);
                                 window.history.replaceState({}, "", "/dashboard");
                                 loadDashboard();
                             }
@@ -538,6 +543,122 @@ export default function DashboardPage() {
 
     return (
         <main className="sec shell" id="dash">
+            {/* =========================
+            APP BAR
+           ========================= */}
+
+                <div className="appbar">
+                    <div className="mark">
+                        <svg
+                            className="knot"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            aria-hidden="true"
+                        >
+                            <path
+                                d="M4 6h6a5 5 0 0 1 0 10H8"
+                                stroke="#D2142F"
+                                strokeWidth="3"
+                            />
+
+                            <path
+                                d="M20 18h-6a5 5 0 0 1 0-10h2"
+                                stroke="#12161A"
+                                strokeWidth="3"
+                            />
+                        </svg>
+
+                        HOLDFAST
+                    </div>
+
+                    <nav className="appnav">
+                        <button
+                            type="button"
+                            className={activeView === "today" ? "on" : ""}
+                            onClick={() => selectView("today")}
+                        >
+                            Today
+                        </button>
+
+                        <button
+                            type="button"
+                            className={activeView === "goals" ? "on" : ""}
+                            onClick={() => selectView("goals")}
+                        >
+                            Goals
+                        </button>
+
+                        <button type="button" onClick={() => selectView("challenges")} className={activeView === "challenges" ? "on" : ""}>
+                            Challenges
+                        </button>
+
+                        <button type="button" onClick={() => selectView("progress")} className={activeView === "progress" ? "on" : ""}>
+                            Progress
+                        </button>
+
+                        <button type="button" onClick={() => selectView("feed")} className={activeView === "feed" ? "on" : ""}>
+                            Feed
+                        </button>
+
+                        <button type="button" onClick={() => selectView("staking")} className={activeView === "staking" ? "on" : ""}>
+                            Staking
+                        </button>
+                        <a className="admin-nav-link" href="/admin">
+                            Admin verification
+                        </a>
+                    </nav>
+
+                    <div className="appbar-r">
+                        <div className="srch">
+                            <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                aria-hidden="true"
+                            >
+                                <circle cx="11" cy="11" r="7" />
+                                <path d="m20 20-3.5-3.5" />
+                            </svg>
+
+                            Search people,challenges
+                        </div>
+
+                        <button
+                            type="button"
+                            className="bell"
+                            aria-label="Notifications"
+                            onClick={() => setShowNotifications((value) => !value)}
+                            aria-expanded={showNotifications}
+                        >
+                            <svg
+                                width="20"
+                                height="20"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.9"
+                                aria-hidden="true"
+                            >
+                                <path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8" />
+                                <path d="M13.7 21a22 22 0 0 1-3.4 0" />
+                            </svg>
+
+                            <i />
+                        </button>
+                        {showNotifications && <div className="notification-popover" role="dialog" aria-label="Notifications"><span className="eyebrow">Notifications</span><strong>{activeGoal ? `${activeGoal.title} is ${activeGoalPercent}% complete` : "No active commitment"}</strong><span>{todaySessions.length ? "Today’s workout is logged and ready to review." : "Log a workout today to keep your commitment moving."}</span><button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowNotifications(false)}>Close</button></div>}
+
+                        <div className="profile-menu-wrap">
+                            <button type="button" className="av av-28 a-nf profile-avatar-button" aria-label="Open profile" aria-expanded={showProfile} onClick={() => setShowProfile((value) => !value)}>
+                                {getInitials(user.name)}
+                            </button>
+                            {showProfile && <div className="profile-popover" role="dialog" aria-label="Your profile"><span className="eyebrow">Your profile</span><strong>{user.name}</strong><span>{user.email || "No email available"}</span><small>@{user.handle}</small><button type="button" className="btn btn-sm btn-ghost" onClick={async () => { await logout(); router.replace("/auth"); }}>Sign out</button></div>}
+                        </div>
+                    </div>
+                </div>
+
             {/* =========================
           SECTION HEADER
          ========================= */}
@@ -639,7 +760,7 @@ export default function DashboardPage() {
                         )}
 
                         {activeView === "progress" && (
-                            <div className="feature-grid"><div className="feature-card"><span className="eyebrow">Sessions</span><strong className="feature-number">{sessions.length}</strong><p>Total workouts logged</p></div><div className="feature-card"><span className="eyebrow">This week</span><strong className="feature-number">{thisWeekSessions}</strong><p>Sessions completed this week</p></div><div className="feature-card"><span className="eyebrow">Goals</span><strong className="feature-number">{completedGoals}</strong><p>Commitments completed</p></div><div className="feature-card feature-wide"><h4>Recent rhythm</h4><div className="mini-bars">{weeklyCounts.map((count, index) => <span key={index} style={{ height: `${Math.max(8, (count / maxWeeklyCount) * 100)}%` }} title={`${count} sessions`} />)}</div></div></div>
+                            <div className="feature-grid progress-view-grid"><div className="feature-card"><span className="eyebrow">Sessions</span><strong className="feature-number">{sessions.length}</strong><p>Total workouts logged</p></div><div className="feature-card"><span className="eyebrow">This week</span><strong className="feature-number">{thisWeekSessions}</strong><p>Sessions completed this week</p></div><div className="feature-card"><span className="eyebrow">Goals</span><strong className="feature-number">{completedGoals}</strong><p>Commitments completed</p></div><div className="feature-card feature-wide"><h4>Recent rhythm</h4><div className="mini-bars">{weeklyCounts.map((count, index) => <span key={index} style={{ height: `${Math.max(8, (count / maxWeeklyCount) * 100)}%` }} title={`${count} sessions`} />)}</div></div></div>
                         )}
 
                         {activeView === "feed" && (
@@ -650,30 +771,30 @@ export default function DashboardPage() {
                             <div className="staking-layout">
                                 <div className="staking-card staking-card-dark">
                                     <div className="row-b">
-                                        <span className="eyebrow" style={{ color: "var(--amber)" }}>COMMUNITY ACCOUNTABILITY POOL</span>
+                                        <span className="eyebrow pool-eyebrow">COMMUNITY ACCOUNTABILITY POOL</span>
                                         <span className="tag tag-amber">LIVE REDISTRIBUTION</span>
                                     </div>
                                     <strong className="stake-balance">
                                         ${(((stakingSnapshot?.forfeitedCents ?? 0)) / 100).toFixed(2)}
                                     </strong>
-                                    <p style={{ color: "#aab5bf", fontSize: "13px" }}>
+                                    <p className="pool-desc">
                                         Forfeited capital from missed workouts currently available for redistribution
                                     </p>
-                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "12px", background: "rgba(255,255,255,0.06)", padding: "10px 12px", borderRadius: "4px" }}>
+                                    <div className="pool-split">
                                         <div>
-                                            <span style={{ display: "block", fontSize: "11px", color: "#aab5bf" }}>Dividend Per Winner</span>
-                                            <b style={{ fontSize: "16px", color: "var(--crimson)" }}>
+                                            <span className="pool-split-label">Dividend Per Winner</span>
+                                            <b className="pool-split-val-crim">
                                                 +${(((stakingSnapshot?.shareCents ?? 0)) / 100).toFixed(2)}
                                             </b>
                                         </div>
                                         <div>
-                                            <span style={{ display: "block", fontSize: "11px", color: "#aab5bf" }}>Goal Completion Rate</span>
-                                            <b style={{ fontSize: "16px", color: "#fff" }}>
+                                            <span className="pool-split-label">Goal Completion Rate</span>
+                                            <b className="pool-split-val-white">
                                                 {stakingSnapshot?.hitRate ?? 0}%
                                             </b>
                                         </div>
                                     </div>
-                                    <div className="staking-stat-row" style={{ marginTop: "14px" }}>
+                                    <div className="staking-stat-row pool-stats">
                                         <span>Total Staked Across Network: <b>${(((stakingSnapshot?.poolCents ?? 0)) / 100).toFixed(2)}</b></span>
                                         <span>Achievers: <b>{stakingSnapshot?.completedCount ?? 0}</b></span>
                                     </div>
@@ -683,7 +804,7 @@ export default function DashboardPage() {
                                 </div>
 
                                 <div className="staking-card staking-form" style={{ background: "var(--card)" }}>
-                                    {stakingSnapshot?.myStake ? (
+                                    {stakingSnapshot?.myStake && ["ACTIVE", "SUBMITTED", "VERIFIED"].includes(stakingSnapshot.myStake.status) ? (
                                         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                                             <div className="row-b">
                                                 <span className="eyebrow">YOUR CURRENT STAKE</span>
@@ -698,11 +819,11 @@ export default function DashboardPage() {
                                                 </span>
                                             </div>
 
-                                            <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
-                                                <strong style={{ fontSize: "32px", fontWeight: 800 }}>
+                                            <div className="active-balance-row">
+                                                <strong className="active-balance-amt">
                                                     ${(stakingSnapshot.myStake.amountCents / 100).toFixed(2)}
                                                 </strong>
-                                                <span className="muted" style={{ fontSize: "12px" }}>
+                                                <span className="muted active-balance-sub">
                                                     via {stakingSnapshot.myStake.proofMethod === "watch" ? "Smartwatch Biometrics" : "Video Check-in"}
                                                 </span>
                                             </div>
@@ -847,9 +968,18 @@ export default function DashboardPage() {
                                                 : "Record or upload a short workout check-in showing your training session."}
                                         </p>
 
+                                        {stakingSnapshot?.myStake && stakingSnapshot.myStake.proofMethod !== proofMethod && (
+                                            <p className="muted" style={{ fontSize: "12px", margin: "0 0 12px", fontWeight: 700 }} role="note">
+                                                {stakingSnapshot.myStake.proofMethod === "watch"
+                                                    ? "This stake requires Smartwatch proof. Switch to Smartwatch to submit for this stake."
+                                                    : "This stake requires Video Check-in proof. Switch to Video Check-in to submit for this stake."}
+                                            </p>
+                                        )}
+
                                         {proofMethod === "video" ? (
                                             <VideoProofUpload
                                                 disabled={false}
+                                                stakeId={stakingSnapshot?.myStake?.id}
                                                 onSubmitted={async (statusMessage) => {
                                                     setStakeStatus("submitted");
                                                     setMessage(statusMessage);
@@ -859,6 +989,7 @@ export default function DashboardPage() {
                                         ) : (
                                             <SmartwatchVerification
                                                 disabled={false}
+                                                stakeId={stakingSnapshot?.myStake?.id}
                                                 onSubmitted={async (statusMessage) => {
                                                     setStakeStatus("submitted");
                                                     setMessage(statusMessage);
@@ -887,121 +1018,6 @@ export default function DashboardPage() {
                         )}
                     </section>
                 )}
-                {/* =========================
-            APP BAR
-           ========================= */}
-
-                <div className="appbar">
-                    <div className="mark">
-                        <svg
-                            className="knot"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            aria-hidden="true"
-                        >
-                            <path
-                                d="M4 6h6a5 5 0 0 1 0 10H8"
-                                stroke="#D2142F"
-                                strokeWidth="3"
-                            />
-
-                            <path
-                                d="M20 18h-6a5 5 0 0 1 0-10h2"
-                                stroke="#12161A"
-                                strokeWidth="3"
-                            />
-                        </svg>
-
-                        HOLDFAST
-                    </div>
-
-                    <nav className="appnav">
-                        <button
-                            type="button"
-                            className={activeView === "today" ? "on" : ""}
-                            onClick={() => selectView("today")}
-                        >
-                            Today
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={() => selectView("goals")}
-                        >
-                            Goals
-                        </button>
-
-                        <button type="button" onClick={() => selectView("challenges")} className={activeView === "challenges" ? "on" : ""}>
-                            Challenges
-                        </button>
-
-                        <button type="button" onClick={() => selectView("progress")} className={activeView === "progress" ? "on" : ""}>
-                            Progress
-                        </button>
-
-                        <button type="button" onClick={() => selectView("feed")} className={activeView === "feed" ? "on" : ""}>
-                            Feed
-                        </button>
-
-                        <button type="button" onClick={() => selectView("staking")} className={activeView === "staking" ? "on" : ""}>
-                            Staking
-                        </button>
-                        <a className="admin-nav-link" href="/admin">
-                            Admin verification
-                        </a>
-                    </nav>
-
-                    <div className="appbar-r">
-                        <div className="srch">
-                            <svg
-                                width="14"
-                                height="14"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                aria-hidden="true"
-                            >
-                                <circle cx="11" cy="11" r="7" />
-                                <path d="m20 20-3.5-3.5" />
-                            </svg>
-
-                            Search people,challenges
-                        </div>
-
-                        <button
-                            type="button"
-                            className="bell"
-                            aria-label="Notifications"
-                            onClick={() => setShowNotifications((value) => !value)}
-                            aria-expanded={showNotifications}
-                        >
-                            <svg
-                                width="20"
-                                height="20"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="1.9"
-                                aria-hidden="true"
-                            >
-                                <path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8" />
-                                <path d="M13.7 21a22 22 0 0 1-3.4 0" />
-                            </svg>
-
-                            <i />
-                        </button>
-                        {showNotifications && <div className="notification-popover" role="dialog" aria-label="Notifications"><span className="eyebrow">Notifications</span><strong>{activeGoal ? `${activeGoal.title} is ${activeGoalPercent}% complete` : "No active commitment"}</strong><span>{todaySessions.length ? "Today’s workout is logged and ready to review." : "Log a workout today to keep your commitment moving."}</span><button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowNotifications(false)}>Close</button></div>}
-
-                        <div className="profile-menu-wrap">
-                            <button type="button" className="av av-28 a-nf profile-avatar-button" aria-label="Open profile" aria-expanded={showProfile} onClick={() => setShowProfile((value) => !value)}>
-                                {getInitials(user.name)}
-                            </button>
-                            {showProfile && <div className="profile-popover" role="dialog" aria-label="Your profile"><span className="eyebrow">Your profile</span><strong>{user.name}</strong><span>{user.email || "No email available"}</span><small>@{user.handle}</small><button type="button" className="btn btn-sm btn-ghost" onClick={async () => { await logout(); router.replace("/auth"); }}>Sign out</button></div>}
-                        </div>
-                    </div>
-                </div>
-
                 {/* =========================
             DAY BAND
            ========================= */}

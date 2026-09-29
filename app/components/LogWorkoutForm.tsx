@@ -160,7 +160,7 @@ export default function LogWorkoutForm({
 
                 <div className="workout-form-footer">
                     <span className="workout-form-helper">Your session stays private unless you share it.</span>
-                    <button className="btn btn-primary workout-submit" type="submit" disabled={saving}>
+                    <button className="btn btn-pri workout-submit" type="submit" disabled={saving}>
                         {saving ? "Logging..." : "Log workout"}
                     </button>
                 </div>

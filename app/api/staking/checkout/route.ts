@@ -1,7 +1,10 @@
-﻿import { headers } from "next/headers";
+﻿import { and, eq } from "drizzle-orm";
+import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
 import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { goals } from "@/lib/db/schema";
 import { getStripe } from "@/lib/stripe";
 
 const MIN_STAKE_CENTS = 100;
@@ -20,6 +23,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const amountDollars = Number(body?.amount);
   const proofMethod = body?.proofMethod === "watch" ? "watch" : "video";
+  const goalId = typeof body?.goalId === "string" ? body.goalId : "";
 
   if (
     !Number.isInteger(amountDollars) ||
@@ -46,6 +50,37 @@ export async function POST(request: Request) {
     );
   }
 
+  if (
+    !goalId ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      goalId
+    )
+  ) {
+    return NextResponse.json(
+      { error: { message: "A valid goal is required." } },
+      { status: 400 }
+    );
+  }
+
+  const [goal] = await db
+    .select({ id: goals.id })
+    .from(goals)
+    .where(
+      and(
+        eq(goals.id, goalId),
+        eq(goals.userId, session.user.id),
+        eq(goals.active, true)
+      )
+    )
+    .limit(1);
+
+  if (!goal) {
+    return NextResponse.json(
+      { error: { message: "Goal not found or is no longer active." } },
+      { status: 404 }
+    );
+  }
+
   const origin = request.headers.get("origin") ?? "http://localhost:3000";
   const checkout = await getStripe().checkout.sessions.create({
     mode: "payment",
@@ -67,11 +102,11 @@ export async function POST(request: Request) {
     client_reference_id: session.user.id,
     metadata: {
       userId: session.user.id,
+      goalId,
       amountCents: String(amountCents),
       proofMethod,
       kind: "holdfast_stake",
     },
-    integration_identifier: `holdfast_stake_${Math.random().toString(36).slice(2, 10)}`,
   });
 
   return NextResponse.json({ url: checkout.url });

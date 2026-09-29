@@ -1,4 +1,4 @@
-import { desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 
@@ -63,15 +63,26 @@ export async function PATCH(request: Request) {
     const [proof] = await db
         .update(verificationProofs)
         .set({ status, updatedAt: new Date() })
-        .where(eq(verificationProofs.id, proofId))
+        .where(
+            and(
+                eq(verificationProofs.id, proofId),
+                eq(verificationProofs.status, "SUBMITTED")
+            )
+        )
         .returning();
 
     if (!proof) {
-        return NextResponse.json({ error: "Proof not found" }, { status: 404 });
+        return NextResponse.json({ error: "Proof not found or already reviewed" }, { status: 409 });
     }
 
-    // Apply proof status to user's stake and recalculate redistribution pool
-    await applyProofReview(proof.userId, status);
+    // Apply the review only to the exact stake linked to this proof.
+    // Legacy proofs without a stakeId are left untouched (no guessing).
+    if (proof.stakeId) {
+        const updatedStake = await applyProofReview(proof.userId, status, { stakeId: proof.stakeId });
+        if (!updatedStake) {
+            return NextResponse.json({ error: "Stake is no longer available for review." }, { status: 409 });
+        }
+    }
 
     return NextResponse.json(proof);
 }

@@ -4,30 +4,10 @@
    Palette vernacular: race bib + timing board + signed contract
    ============================================================ */
 :root{
-  --ink:#12161A;          /* cool slate-black, the board */
-  --ink-2:#1C232A;
-  --ink-3:#2C363F;
-  --paper:#FBFAF8;        /* bib white */
-  --card:#FFFFFF;
-  --mist:#E7EAED;         /* cool rule / fill */
-  --mist-2:#F2F4F6;
-  --steel:#5D6B78;        /* secondary text */
-  --steel-2:#8B98A4;
-  --crimson:#D2142F;      /* the signal: commitment, seal, flag */
-  --crimson-dk:#A80F25;
-  --crimson-wash:#FDECEE;
-  --amber:#EFA109;        /* board lamp â€” demo / at-stake only */
-  --amber-wash:#FFF5E0;
-  --bg:var(--paper);
-  --fg:var(--ink);
-  --chrome-fg:#12161A;
-  --chrome-muted:#5D6B78;
-  --chrome-rule:#E2E6EA;
+  /* P0 canonical tokens live in app/globals.css - do not duplicate palette here. */
   box-sizing:border-box;
   padding-top:env(safe-area-inset-top,0px);
   padding-bottom:env(safe-area-inset-bottom,0px);
-  --shell:1240px;
-  --r:4px;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){ --bg:#0C1013; --chrome-fg:#EDF1F4; --chrome-muted:#9AA6B2; --chrome-rule:#27313A; }
@@ -91,7 +71,8 @@ button{font:inherit;color:inherit;cursor:pointer}
 .plate{
   background:var(--card);color:var(--ink);border:1px solid var(--mist);
   box-shadow:0 1px 0 rgba(18,22,26,.04),0 18px 44px -28px rgba(18,22,26,.45);
-  overflow:hidden;border-radius:var(--r);
+  overflow:clip;border-radius:var(--r);
+  display:flex;flex-direction:column;
 }
 .plate.dark{background:var(--ink);color:#fff;border-color:#28323A}
 .plate.bleed{border:none;box-shadow:0 24px 60px -34px rgba(18,22,26,.6)}
@@ -99,11 +80,11 @@ button{font:inherit;color:inherit;cursor:pointer}
 /* ============================================================
    Shared app chrome (screens 3â€“10)
    ============================================================ */
-.appbar{display:flex;align-items:center;gap:26px;height:58px;padding:0 20px;border-bottom:1px solid var(--mist);background:var(--card)}
+.appbar{display:flex;align-items:center;gap:26px;height:58px;padding:0 20px;border-bottom:1px solid var(--mist);background:var(--card);position:sticky;top:0;z-index:50;order:-1;width:100%}
 .appbar .mark{color:var(--ink);font-size:14px}
-.appnav{display:flex;gap:4px;margin-right:auto}
-.appnav span{font-size:13px;font-weight:600;color:var(--steel);padding:7px 11px;border-radius:3px}
-.appnav span.on{color:var(--ink);background:var(--mist-2);box-shadow:inset 0 -2px 0 var(--crimson)}
+.appnav{display:flex;gap:4px;margin-right:auto;align-items:center}
+.appnav span,.appnav button,.appnav a,.admin-nav-link{font-size:13px;font-weight:600;color:var(--steel);padding:7px 11px;border-radius:3px;text-decoration:none;white-space:nowrap;border:0;background:transparent}
+.appnav span.on,.appnav button.on,.appnav a.on,.admin-nav-link.on{color:var(--ink);background:var(--mist-2);box-shadow:inset 0 -2px 0 var(--crimson)}
 .appbar-r{display:flex;align-items:center;gap:12px}
 .srch{display:flex;align-items:center;gap:8px;border:1px solid var(--mist);border-radius:3px;padding:6px 10px;color:var(--steel-2);font-size:12.5px;min-width:180px}
 .bell{position:relative;width:20px;height:20px;color:var(--steel)}

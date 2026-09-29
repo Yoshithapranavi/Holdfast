@@ -4,11 +4,13 @@ import { useRef, useState, useEffect } from "react";
 
 type VideoProofUploadProps = {
     disabled?: boolean;
+    stakeId?: string;
     onSubmitted: (message: string) => void;
 };
 
 export default function VideoProofUpload({
     disabled = false,
+    stakeId,
     onSubmitted,
 }: VideoProofUploadProps) {
     const inputRef = useRef<HTMLInputElement>(null);
@@ -41,6 +43,9 @@ export default function VideoProofUpload({
         try {
             const formData = new FormData();
             formData.append("video", file);
+            if (stakeId) {
+                formData.append("stakeId", stakeId);
+            }
 
             const response = await fetch("/api/verification/video", {
                 method: "POST",

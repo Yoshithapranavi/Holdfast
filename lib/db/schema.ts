@@ -1,5 +1,6 @@
 import {
     boolean,
+    index,
     integer,
     pgTable,
     real,
@@ -90,6 +91,7 @@ export const dailyCommitments = pgTable("daily_commitments", {
 export const stakes = pgTable("stakes", {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("userId").notNull(),
+    goalId: uuid("goalId"),
     stripeCheckoutSessionId: text("stripeCheckoutSessionId").notNull().unique(),
     amountCents: integer("amountCents").notNull(),
     proofMethod: text("proofMethod").notNull(),
@@ -101,9 +103,12 @@ export const stakes = pgTable("stakes", {
 export const verificationProofs = pgTable("verification_proofs", {
     id: uuid("id").defaultRandom().primaryKey(),
     userId: text("userId").notNull(),
+    stakeId: uuid("stakeId").references(() => stakes.id, { onDelete: "set null" }),
     pathname: text("pathname").notNull(),
     proofMethod: text("proofMethod").notNull().default("video"),
     status: text("status").notNull().default("SUBMITTED"),
     createdAt: timestamp("createdAt").notNull().defaultNow(),
     updatedAt: timestamp("updatedAt").notNull().defaultNow(),
-});
+}, (t) => [
+    index("verification_proofs_stake_id_idx").on(t.stakeId),
+]);

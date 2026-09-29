@@ -9,7 +9,7 @@
 .wd{height:44px;border-radius:2px;display:grid;place-items:center;font-size:12px;font-weight:700;background:#1C242B;color:#6F7B87}
 .wd.done{background:#FBFAF8;color:var(--ink)}
 .wd.rest{background:#161D23;color:#4C565F}
-.wd.today{background:var(--crimson);color:#fff;box-shadow:0 0 0 2px rgba(210,20,47,.35)}
+.wd.today{background:var(--crimson);color:#fff;box-shadow:0 0 0 2px var(--crimson-glow)}
 .wd.plan{background:#1C242B;color:#9BA7B3;border:1px dashed #3D4750}
 .day-streak{display:flex;align-items:center;gap:12px;border-top:1px solid #28323A;padding-top:16px}
 .day-streak b{font-size:40px;font-variation-settings:"wdth" 112;font-weight:800;line-height:1}
