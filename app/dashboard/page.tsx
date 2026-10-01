@@ -6,6 +6,7 @@ import Link from "next/link";
 
 import { useAuth } from "../providers";
 import {
+    cancelGoal,
     createGoal,
     getMyGoals,
     getMySessions,
@@ -245,6 +246,7 @@ export default function DashboardPage() {
 
     const [goals, setGoals] = useState<Goal[]>([]);
     const [sessions, setSessions] = useState<WorkoutSession[]>([]);
+    const [searchQuery, setSearchQuery] = useState("");
     const [dailyCommitment, setDailyCommitment] =
         useState<DailyCommitment | null>(null);
     const [loadingData, setLoadingData] = useState(true);
@@ -254,6 +256,7 @@ export default function DashboardPage() {
     const [goalTarget, setGoalTarget] = useState("10");
     const [goalUnit, setGoalUnit] = useState("sessions");
     const [goalSaving, setGoalSaving] = useState(false);
+    const [cancellingGoalId, setCancellingGoalId] = useState<string | null>(null);
     const [message, setMessage] = useState("");
     const [activeView, setActiveView] = useState<"today" | "goals" | "challenges" | "progress" | "feed" | "staking">("today");
     const [stakeAmount, setStakeAmount] = useState("25");
@@ -424,6 +427,35 @@ export default function DashboardPage() {
         }
     }
 
+    async function handleCancelGoal(goal: Goal) {
+        if (cancellingGoalId) {
+            return;
+        }
+
+        const confirmed =
+            typeof window === "undefined"
+                ? true
+                : window.confirm(
+                      `Cancel "${goal.title}"? Your workout history is kept, but this commitment will no longer be active.`,
+                  );
+
+        if (!confirmed) {
+            return;
+        }
+
+        setCancellingGoalId(goal.id);
+        setMessage("");
+        try {
+            await cancelGoal(goal.id);
+            setGoals((current) => current.filter((item) => item.id !== goal.id));
+            setMessage(`Cancelled "${goal.title}". Your history was kept.`);
+        } catch (error) {
+            setMessage(error instanceof Error ? error.message : "Unable to cancel goal.");
+        } finally {
+            setCancellingGoalId(null);
+        }
+    }
+
     useEffect(() => {
         if (!loading && !user) {
             router.replace("/auth");
@@ -531,6 +563,34 @@ export default function DashboardPage() {
         ...weeklyCounts,
     );
 
+    const normalizedSearch = searchQuery.trim().toLowerCase();
+    const isSearching = normalizedSearch.length > 0;
+
+    const filteredGoals = useMemo(() => {
+        if (!normalizedSearch) {
+            return goals;
+        }
+
+        return goals.filter((goal) =>
+            `${goal.title} ${goal.unit} ${goal.metric}`
+                .toLowerCase()
+                .includes(normalizedSearch),
+        );
+    }, [goals, normalizedSearch]);
+
+    const filteredSessions = useMemo(() => {
+        if (!normalizedSearch) {
+            return sessions;
+        }
+
+        return sessions.filter((session) => {
+            const haystack =
+                `${getSessionTitle(session)} ${session.type} ${session.notes ?? ""} ${session.effort ?? ""}`.toLowerCase();
+
+            return haystack.includes(normalizedSearch);
+        });
+    }, [sessions, normalizedSearch]);
+
     if (loading || !user) {
         return (
             <main className="shell sec">
@@ -609,7 +669,7 @@ export default function DashboardPage() {
                     </nav>
 
                     <div className="appbar-r">
-                        <div className="srch">
+                        <label className="srch" htmlFor="dashboard-search">
                             <svg
                                 width="14"
                                 height="14"
@@ -623,8 +683,17 @@ export default function DashboardPage() {
                                 <path d="m20 20-3.5-3.5" />
                             </svg>
 
-                            Search people,challenges
-                        </div>
+                            <input
+                                id="dashboard-search"
+                                type="search"
+                                className="srch-input"
+                                placeholder="Search people,challenges"
+                                aria-label="Search goals and sessions"
+                                autoComplete="off"
+                                value={searchQuery}
+                                onChange={(event) => setSearchQuery(event.target.value)}
+                            />
+                        </label>
 
                         <button
                             type="button"
@@ -716,7 +785,7 @@ export default function DashboardPage() {
                                     <button className="btn btn-pri btn-sm" type="submit" disabled={goalSaving}>{goalSaving ? "Saving..." : "Create goal"}</button>
                                 </form>
                                 <div className="view-list">
-                                    {goals.length === 0 ? <div className="empty-state"><strong>No goals yet.</strong><span>Create your first commitment above.</span></div> : goals.map((goal) => {
+                                    {filteredGoals.length === 0 ? <div className="empty-state"><strong>{isSearching ? "No matching goals." : "No goals yet."}</strong><span>{isSearching ? `No commitments match “${searchQuery.trim()}”.` : "Create your first commitment above."}</span></div> : filteredGoals.map((goal) => {
                                         const currentValue =
                                             typeof goal.currentValue === "number" && Number.isFinite(goal.currentValue)
                                                 ? goal.currentValue
@@ -746,7 +815,17 @@ export default function DashboardPage() {
                                                         />
                                                     </div>
                                                 </div>
-                                                <b>{percent}%</b>
+                                                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                                    <b>{percent}%</b>
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-sm btn-ghost"
+                                                        onClick={() => handleCancelGoal(goal)}
+                                                        disabled={cancellingGoalId === goal.id}
+                                                    >
+                                                        {cancellingGoalId === goal.id ? "Cancelling…" : "Cancel"}
+                                                    </button>
+                                                </div>
                                             </div>
                                         );
 
@@ -764,7 +843,7 @@ export default function DashboardPage() {
                         )}
 
                         {activeView === "feed" && (
-                            <div className="view-list">{sessions.length === 0 ? <div className="empty-state"><strong>Your feed is quiet.</strong><span>Log a workout and it will appear here.</span></div> : sessions.map((session) => <div className="view-list-row feed-row" key={session.id}><div className="sicon"><SessionIcon type={session.type} /></div><div><strong>{getSessionTitle(session)} logged</strong><span>{formatSessionDate(session.occurredAt)} · {formatDuration(session.durationSeconds)}{session.notes ? ` · ${session.notes}` : ""}</span></div><span className="tag tag-out">{session.effort || "Logged"}</span></div>)}</div>
+                            <div className="view-list">{filteredSessions.length === 0 ? <div className="empty-state"><strong>{isSearching ? "No matching sessions." : "Your feed is quiet."}</strong><span>{isSearching ? `No sessions match “${searchQuery.trim()}”.` : "Log a workout and it will appear here."}</span></div> : filteredSessions.map((session) => <div className="view-list-row feed-row" key={session.id}><div className="sicon"><SessionIcon type={session.type} /></div><div><strong>{getSessionTitle(session)} logged</strong><span>{formatSessionDate(session.occurredAt)} · {formatDuration(session.durationSeconds)}{session.notes ? ` · ${session.notes}` : ""}</span></div><span className="tag tag-out">{session.effort || "Logged"}</span></div>)}</div>
                         )}
 
                         {activeView === "staking" && (
@@ -1311,21 +1390,23 @@ export default function DashboardPage() {
                                     </div>
                                 </div>
                             </div>
-                        ) : goals.length === 0 ? (
+                        ) : filteredGoals.length === 0 ? (
                             <div className="ledger">
                                 <div className="lrow">
                                     <div>
-                                        <h4>No active commitments</h4>
+                                        <h4>{isSearching ? "No matching commitments" : "No active commitments"}</h4>
 
                                         <p>
-                                            Your active goals will appear here.
+                                            {isSearching
+                                                ? `No commitments match “${searchQuery.trim()}”.`
+                                                : "Your active goals will appear here."}
                                         </p>
                                     </div>
                                 </div>
                             </div>
                         ) : (
                             <div className="ledger">
-                                {goals.map((goal) => {
+                                {filteredGoals.map((goal) => {
                                     const percent =
                                         goal.targetValue > 0
                                             ? Math.min(
@@ -1391,6 +1472,14 @@ export default function DashboardPage() {
                                                 >
                                                     {percent}%
                                                 </span>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-sm btn-ghost"
+                                                    onClick={() => handleCancelGoal(goal)}
+                                                    disabled={cancellingGoalId === goal.id}
+                                                >
+                                                    {cancellingGoalId === goal.id ? "Cancelling…" : "Cancel"}
+                                                </button>
                                             </div>
                                         </div>
                                     );
@@ -1415,22 +1504,23 @@ export default function DashboardPage() {
                             </span>
                         </div>
 
-                        {sessions.length === 0 ? (
+                        {filteredSessions.length === 0 ? (
                             <div className="ledger">
                                 <div className="lrow">
                                     <div>
-                                        <h4>No sessions yet</h4>
+                                        <h4>{isSearching ? "No matching sessions" : "No sessions yet"}</h4>
 
                                         <p>
-                                            Log your first workout to start
-                                            building your activity record.
+                                            {isSearching
+                                                ? `No sessions match “${searchQuery.trim()}”.`
+                                                : "Log your first workout to start building your activity record."}
                                         </p>
                                     </div>
                                 </div>
                             </div>
                         ) : (
                             <div className="ledger">
-                                {sessions.slice(0, 5).map((session) => (
+                                {filteredSessions.slice(0, 5).map((session) => (
                                     <div
                                         className="srow"
                                         key={session.id}

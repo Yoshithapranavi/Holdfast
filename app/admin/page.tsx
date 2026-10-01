@@ -29,6 +29,16 @@ export default function AdminPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [message, setMessage] = useState("");
+    const [searchQuery, setSearchQuery] = useState("");
+    const normalizedSearch = searchQuery.trim().toLowerCase();
+    const isSearching = normalizedSearch.length > 0;
+    const filteredProofs = isSearching
+        ? proofs.filter((proof) =>
+            `${proof.id} ${proof.userId} ${proof.pathname} ${proof.proofMethod} ${proof.status}`
+                .toLowerCase()
+                .includes(normalizedSearch),
+        )
+        : proofs;
 
     async function loadProofs() {
         try {
@@ -136,7 +146,7 @@ export default function AdminPage() {
                 </nav>
 
                 <div className="appbar-r">
-                    <div className="srch">
+                    <label className="srch" htmlFor="admin-search">
                         <svg
                             width="14"
                             height="14"
@@ -149,8 +159,17 @@ export default function AdminPage() {
                             <circle cx="11" cy="11" r="7" />
                             <path d="m20 20-3.5-3.5" />
                         </svg>
-                        Search people,challenges
-                    </div>
+                        <input
+                            id="admin-search"
+                            type="search"
+                            className="srch-input"
+                            placeholder="Search people,challenges"
+                            aria-label="Search verification queue"
+                            autoComplete="off"
+                            value={searchQuery}
+                            onChange={(event) => setSearchQuery(event.target.value)}
+                        />
+                    </label>
                     <Link href="/dashboard" className="btn btn-sm btn-ghost">
                         ← Back to dashboard
                     </Link>
@@ -215,15 +234,15 @@ export default function AdminPage() {
 
             {loading ? <p className="muted">Loading verification submissions...</p> : null}
 
-            {!loading && proofs.length === 0 ? (
+            {!loading && filteredProofs.length === 0 ? (
                 <div style={{ padding: "48px 24px", textAlign: "center", background: "var(--card)", border: "1px solid var(--mist)", borderRadius: "4px" }}>
-                    <h3 style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 6px" }}>Queue is Clear</h3>
-                    <p className="muted" style={{ margin: 0 }}>All submitted workout proofs have been reviewed. Return to your dashboard to log workouts or activate stakes.</p>
+                    <h3 style={{ fontSize: "18px", fontWeight: 700, margin: "0 0 6px" }}>{isSearching ? "No matching proofs" : "Queue is Clear"}</h3>
+                    <p className="muted" style={{ margin: 0 }}>{isSearching ? `No verification submissions match “${searchQuery.trim()}”.` : "All submitted workout proofs have been reviewed. Return to your dashboard to log workouts or activate stakes."}</p>
                 </div>
             ) : null}
 
             <section className="admin-proof-list" aria-label="Proof submissions">
-                {proofs.map((proof) => (
+                {filteredProofs.map((proof) => (
                     <article className="admin-proof-card" key={proof.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(200px, 1fr) auto", gap: "20px", alignItems: "center", padding: "20px" }}>
                         <div>
                             <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "6px" }}>

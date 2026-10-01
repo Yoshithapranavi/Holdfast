@@ -110,6 +110,13 @@ export async function createGoal(_token: string | undefined, input: CreateGoalIn
   });
 }
 
+export async function cancelGoal(goalId: string): Promise<{ id: string; active: boolean }> {
+  return request<{ id: string; active: boolean }>(
+    `/goals/${encodeURIComponent(goalId)}/cancel`,
+    { method: "POST" },
+  );
+}
+
 export type SessionType = "RUN" | "STRENGTH" | "SWIM" | "CYCLE" | "MOBILITY" | "OTHER";
 export type SessionEffort = "EASY" | "STEADY" | "HARD";
 
